@@ -2303,8 +2303,8 @@ static int __init usbnet_init(void)
 	/* Compiler should optimize this out. */
 	BUILD_BUG_ON(
 		FIELD_SIZEOF(struct sk_buff, cb) < sizeof(struct skb_data));
-
-	eth_random_addr(dev->net->dev_addr);
+    
+	eth_random_addr(net->dev_addr);
 	for (i = 0; i < NUM_USBNET_IDS; i++) {
 		usbnet_ipc_log_ctxt[i] =
 			ipc_log_context_create(IPC_LOG_NUM_PAGES,
