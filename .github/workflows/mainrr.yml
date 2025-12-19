@@ -27,7 +27,7 @@ jobs:
         id: cherry
         run: |
           set -e
-          git cherry-pick e63d96f4e391d9b82341fa4926652baf22c273e9 || echo "conflict" > .conflict
+          git cherry-pick 57fb0929f32020f6f8a238d96b7df596140f2349 || echo "conflict" > .conflict
 
       - name: Handle conflicts if any
         if: ${{ hashFiles('.conflict') != '' }}
@@ -41,7 +41,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin HaavkKernel
+          git push origin HaavkSukisu
 
       - name: Show summary
         run: |
