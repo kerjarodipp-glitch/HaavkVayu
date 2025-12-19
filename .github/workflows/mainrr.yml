@@ -1,79 +1,48 @@
-name: Cherry-pick SuSFS v2.0.0 (auto-resolve conflicts)
+name: Backport SuSFS v2.0.0
 
 on:
   workflow_dispatch:
 
 jobs:
-  cherrypick_susfs_v2:
+  backport:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - name: Checkout branch 16
+      - name: Checkout target kernel
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          ref: HaavkKernel
+          fetch-depth: 0   # perlu semua riwayat untuk cherry-pick
 
-      - name: Set git identity
+      - name: Setup Git identity
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add remote for surya kernel
+      - name: Add source remote (kylieeXD surya)
         run: |
-          git remote add surya https://github.com/kylieeXD/android_kernel_xiaomi_surya.git || true
-          git fetch surya
+          git remote add susfs-src https://github.com/kylieeXD/android_kernel_surya
+          git fetch susfs-src
 
-      - name: Cherry-pick SuSFS v2.0.0 with auto-resolve for all conflicts
+      - name: Try to cherry-pick SuSFS commit
+        id: cherry
         run: |
           set -e
-          SUSFS_COMMIT=e63d96f4e391d9b82341fa4926652baf22c273e9
-          echo "Cherry-picking SuSFS v2.0.0 ($SUSFS_COMMIT)..."
+          git cherry-pick e63d96f4e391d9b82341fa4926652baf22c273e9 || echo "conflict" > .conflict
 
-          # Coba cherry-pick biasa dulu
-          set +e
-          git cherry-pick $SUSFS_COMMIT
-          STATUS=$?
-          set -e
-
-          if [ $STATUS -ne 0 ]; then
-            echo "Cherry-pick reported conflict, trying auto-resolve (use 'theirs' for all conflicted files)..."
-
-            # Pastikan memang lagi di tengah cherry-pick
-            if git rev-parse -q --verify CHERRY_PICK_HEAD >/dev/null; then
-              # Ambil daftar file yang masih konflik
-              CONFLICTS=$(git diff --name-only --diff-filter=U)
-
-              if [ -z "$CONFLICTS" ]; then
-                echo "No conflicted files reported, cannot auto-resolve. Aborting with original status."
-                exit $STATUS
-              fi
-
-              echo "Conflicted files:"
-              echo "$CONFLICTS"
-
-              # Untuk setiap file konflik, pakai versi 'theirs' (dari commit SuSFS)
-              for file in $CONFLICTS; do
-                echo "Auto-resolving $file with 'theirs' version..."
-                git checkout --theirs -- "$file"
-                git add "$file"
-              done
-
-              # Lanjutkan cherry-pick
-              git cherry-pick --continue
-            else
-              echo "Cherry-pick failed but no CHERRY_PICK_HEAD, aborting."
-              exit $STATUS
-            fi
-          fi
-
-      - name: Show diff summary
+      - name: Handle conflicts if any
+        if: ${{ hashFiles('.conflict') != '' }}
         run: |
-          echo "=== Changed files after cherry-pick ==="
-          git diff --stat HEAD~1..HEAD || true
+          echo "::warning::Cherry-pick caused conflicts, keeping partial patch"
+          git status
+          git add .
+          git commit -m "Conflict Fix Needed"
 
-      - name: Push changes to default Branch
+      - name: Push backport branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin HaavkKernel
+          git push origin HaavkKernel --force
+
+      - name: Show summary
+        run: |
+          echo "If there were conflicts, please resolve manually in your repo."
