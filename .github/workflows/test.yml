@@ -61,8 +61,8 @@ jobs:
             unzip ca-certificates xz-utils \
             cpio device-tree-compiler \
             mkbootimg aria2
-
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s stable
+            
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
 
       # ===============================
       # LLVM / Clang 22 (AOSP OFFICIAL)
