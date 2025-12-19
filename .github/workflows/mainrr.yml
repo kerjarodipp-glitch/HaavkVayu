@@ -41,7 +41,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin HaavkKernel --force
+          git push origin HaavkKernel
 
       - name: Show summary
         run: |
