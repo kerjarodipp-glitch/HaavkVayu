@@ -1,0 +1,132 @@
+name: Build Kernel (4.14 - LLVM Clang 22)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 6"
+  push:
+    branches:
+      - HEAD
+  pull_request:
+    branches:
+      - HEAD
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_MAXSIZE: "2G"
+      CCACHE_HARDLINK: "true"
+
+      ARCH: arm64
+      SUBARCH: arm64
+      KERNEL_DEFCONFIG: vayu_user_defconfig
+      O: out
+
+      KERNEL_CMDLINE: >
+        ARCH=arm64
+        O=out
+        CC=clang
+        LD=ld.lld
+        AR=llvm-ar
+        NM=llvm-nm
+        STRIP=llvm-strip
+        OBJCOPY=llvm-objcopy
+        OBJDUMP=llvm-objdump
+        READELF=llvm-readelf
+        CROSS_COMPILE=aarch64-linux-gnu-
+        CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 100
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install -y \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            bc bison flex libssl-dev build-essential \
+            python3 python-is-python3 \
+            binutils git git-lfs curl wget \
+            unzip ca-certificates xz-utils \
+            cpio device-tree-compiler \
+            mkbootimg aria2
+
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s stable
+
+      # ===============================
+      # LLVM / Clang 22 (AOSP OFFICIAL)
+      # ===============================
+      - name: Fetch AOSP LLVM Clang 22
+        run: |
+          git clone --depth=1 https://android.googlesource.com/toolchain/llvm-project llvm-project
+          cd llvm-project
+          mkdir build && cd build
+          cmake -G Ninja \
+            -DLLVM_ENABLE_PROJECTS="clang;lld" \
+            -DLLVM_TARGETS_TO_BUILD="AArch64;ARM" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_ENABLE_TERMINFO=OFF \
+            -DLLVM_ENABLE_ZLIB=OFF \
+            ../llvm
+          ninja clang lld
+
+      - name: Export LLVM toolchain
+        run: |
+          echo "PATH=$(pwd)/llvm-project/build/bin:$PATH" >> $GITHUB_ENV
+
+      # Fix mkdtboimg.py (Python3 compatible)
+      - name: Fix mkdtboimg.py
+        run: |
+          MKDTBO_PATH="scripts/dtc/libfdt/mkdtboimg.py"
+          curl -L "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" \
+            | base64 --decode > "$MKDTBO_PATH"
+          chmod +x "$MKDTBO_PATH"
+
+      - name: GetTime
+        id: get_time
+        run: echo "TIME=$(TZ=UTC+3 date +%s)" >> "$GITHUB_OUTPUT"
+
+      # ===============================
+      # Kernel build (logging preserved)
+      # ===============================
+      - name: Build Kernel (Clang 22)
+        run: |
+          export CC="ccache clang"
+          export HOSTCC=clang
+
+          echo ">>> Defconfig"
+          make $KERNEL_CMDLINE $KERNEL_DEFCONFIG 2>&1 | tee build_defconfig.log
+
+          echo ">>> Build Image + dtbo.img"
+          make $KERNEL_CMDLINE -j$(nproc --all) Image dtbo.img \
+            2>&1 | tee build_kernel.log
+
+      - name: Upload Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build_Logs-${{ steps.get_time.outputs.TIME }}
+          path: |
+            build_defconfig.log
+            build_kernel.log
+            out/arch/arm64/boot/.config
+
+      - name: Upload Raw Outputs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raw_Kernel-${{ steps.get_time.outputs.TIME }}
+          path: |
+            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/dtbo.img
