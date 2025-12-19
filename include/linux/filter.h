@@ -20,11 +20,8 @@
 #include <linux/set_memory.h>
 
 #include <net/sch_generic.h>
-<<<<<<< HEAD
-=======
 #include <asm/byteorder.h>
 #include <linux/set_memory.h>
->>>>>>> 57fb0929f320 (set_memory: add linux/set_memory.h to any files that used)
 
 #include <uapi/linux/filter.h>
 #include <uapi/linux/bpf.h>
