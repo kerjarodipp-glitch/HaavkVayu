@@ -43,14 +43,6 @@ jobs:
             bc bison flex unzip ca-certificates xz-utils \
             mkbootimg cpio device-tree-compiler git git-lfs curl wget
 
-          # python2 (dibutuhkan rule dtbo.img). Kalau paketnya tidak ada,
-          # buat symlink python2 -> python3
-          sudo apt-get install -y python2 || true
-          if ! command -v python2 >/dev/null 2>&1; then
-            echo "python2 package not available, creating symlink python2 -> python3"
-            sudo ln -sf /usr/bin/python3 /usr/bin/python2
-          fi
-
           # Toolchain (crDroid clang-r547379)
           git clone --depth=1 \
             https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git \
@@ -77,9 +69,6 @@ jobs:
           echo ">>> Starting defconfig build..."
           make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang" 2>&1 | tee build_defconfig.log
 
-          echo ">>> Starting kernel compilation (Image + dtbo.img)..."
-          make $KERNEL_CMDLINE CC="ccache clang" -j"$(nproc --all)" Image dtbo.img 2>&1 | tee build_kernel.log
-
           BUILD_RESULT=${PIPESTATUS[0]}
           if [ "$BUILD_RESULT" -ne 0 ]; then
             echo "❌ Kernel build failed. Logs will be uploaded."
@@ -104,5 +93,4 @@ jobs:
           name: Raw_Kernel-${{ steps.get_time.outputs.TIME }}
           path: |
             out/arch/arm64/boot/Image
-            out/arch/arm64/boot/dtbo.img
             
