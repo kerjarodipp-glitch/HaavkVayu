@@ -2,7 +2,7 @@ name: Build Kernel (4.9 - crDroid)
 
 on:
   workflow_dispatch:
-  schedule: 
+  schedule:
     - cron: "0 0 * * 6"
   push:
     branches:
@@ -43,6 +43,14 @@ jobs:
             bc bison flex unzip ca-certificates xz-utils \
             mkbootimg cpio device-tree-compiler git git-lfs curl wget
 
+          # python2 (dibutuhkan rule dtbo.img). Kalau paketnya tidak ada,
+          # buat symlink python2 -> python3
+          sudo apt-get install -y python2 || true
+          if ! command -v python2 >/dev/null 2>&1; then
+            echo "python2 package not available, creating symlink python2 -> python3"
+            sudo ln -sf /usr/bin/python3 /usr/bin/python2
+          fi
+
           # Toolchain (crDroid clang-r547379)
           git clone --depth=1 \
             https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git \
@@ -55,7 +63,7 @@ jobs:
             | base64 --decode > "$MKDTBO_PATH"
           chmod +x "$MKDTBO_PATH"
 
-          curl -LSs "https://raw.githubusercontent.com/raplivx/KernelSU/main/kernel/setup.sh" | bash -s susfs-rksu-master
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s tmp-builtin
           
       - name: GetTime
         id: get_time
@@ -69,11 +77,28 @@ jobs:
           echo ">>> Starting defconfig build..."
           make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang" 2>&1 | tee build_defconfig.log
 
+          echo ">>> Starting kernel compilation (Image + dtbo.img)..."
+          make $KERNEL_CMDLINE CC="ccache clang" -j"$(nproc --all)" Image dtbo.img 2>&1 | tee build_kernel.log
+
           BUILD_RESULT=${PIPESTATUS[0]}
           if [ "$BUILD_RESULT" -ne 0 ]; then
             echo "❌ Kernel build failed. Logs will be uploaded."
             exit 1
           fi
+
+      - name: Run Kernel Patcher
+        run: |
+          cd out/arch/arm64/boot/
+          echo "Downloading patcher..."
+          wget -q https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.2/patch_linux
+          chmod +x patch_linux
+
+          echo "Patching kernel image..."
+          ./patch_linux || { echo "Error: Patching failed!" >&2; exit 1; }
+
+          rm -f Image
+          mv oImage Image
+          cd -
 
       - name: Upload Build Logs
         if: always()
@@ -93,4 +118,5 @@ jobs:
           name: Raw_Kernel-${{ steps.get_time.outputs.TIME }}
           path: |
             out/arch/arm64/boot/Image
+            out/arch/arm64/boot/dtbo.img
             
