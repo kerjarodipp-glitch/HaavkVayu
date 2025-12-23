@@ -1,0 +1,41 @@
+name: Apply Patch (Root)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - HaavkKSU
+      - HEAD
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply all .patch in root
+        run: |
+          set -e
+          for patch in *.patch; do
+            [ -f "$patch" ] || continue
+            echo "Applying $patch"
+            git apply --3way "$patch"
+          done
+
+      - name: Commit changes
+        run: |
+          git status
+          git commit -am "apply patches from root via workflow" || echo "No changes to commit"
+
+      - name: Push changes
+        run: |
+          git push
