@@ -63,7 +63,7 @@ jobs:
             | base64 --decode > "$MKDTBO_PATH"
           chmod +x "$MKDTBO_PATH"
 
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s tmp-builtin
+          curl -LSs "https://raw.githubusercontent.com/raplivx/KernelSU/main/kernel/setup.sh" | bash -s susfs-rksu-master
           
       - name: GetTime
         id: get_time
@@ -85,20 +85,6 @@ jobs:
             echo "❌ Kernel build failed. Logs will be uploaded."
             exit 1
           fi
-
-      - name: Run Kernel Patcher
-        run: |
-          cd out/arch/arm64/boot/
-          echo "Downloading patcher..."
-          wget -q https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.2/patch_linux
-          chmod +x patch_linux
-
-          echo "Patching kernel image..."
-          ./patch_linux || { echo "Error: Patching failed!" >&2; exit 1; }
-
-          rm -f Image
-          mv oImage Image
-          cd -
 
       - name: Upload Build Logs
         if: always()
