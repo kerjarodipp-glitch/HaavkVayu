@@ -56,7 +56,7 @@ jobs:
             https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git \
             google-clang
 
-            curl -LSs "https://raw.githubusercontent.com/kerjarodipp-glitch/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s susfs-rksu-master
+            curl -LSs "https://raw.githubusercontent.com/raplivx/KernelSU/main/kernel/setup.sh" | bash -s susfs-rksu-master
          
           # Ganti mkdtboimg.py dengan versi Python3 dari AOSP (fix error str/bytes)
           MKDTBO_PATH="scripts/dtc/libfdt/mkdtboimg.py"
