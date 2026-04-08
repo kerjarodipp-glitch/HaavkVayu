@@ -21,10 +21,10 @@ jobs:
 
       - name: Create new branch HaavkSukisu
         run: |
-          git checkout -b HaavkSukisuT
+          git checkout -b HaavkSukisu12
 
       - name: Push branch to origin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin HaavkSukisuT
+          git push origin HaavkSukisu12
