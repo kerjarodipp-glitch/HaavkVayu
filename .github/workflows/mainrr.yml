@@ -20,14 +20,14 @@ jobs:
 
       - name: Add source remote (kylieeXD surya)
         run: |
-          git remote add susfs-src https://github.com/kylieeXD/android_kernel_surya
+          git remote add susfs-src https://github.com/sidex15/android_kernel_lge_sm8150
           git fetch susfs-src
 
       - name: Try to cherry-pick SuSFS commit
         id: cherry
         run: |
           set -e
-          git cherry-pick 57fb0929f32020f6f8a238d96b7df596140f2349 || echo "conflict" > .conflict
+          git cherry-pick bb2f164bc19795ef704f17c82f04885d44421418 || echo "conflict" > .conflict
 
       - name: Handle conflicts if any
         if: ${{ hashFiles('.conflict') != '' }}
