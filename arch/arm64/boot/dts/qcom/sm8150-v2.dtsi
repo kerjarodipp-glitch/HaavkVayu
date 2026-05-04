@@ -699,29 +699,28 @@
 			qcom,initial-pwrlevel = <5>;
 
 			qcom,gpu-pwrlevel@0 {
-				reg = <0>;
-				qcom,gpu-freq = <675000000>;
-				qcom,bus-freq = <11>;
-				qcom,bus-min = <11>;
-				qcom,bus-max = <11>;
-			};
+    reg = <0>;
+    qcom,gpu-freq = <675000000>;  // 675 MHz
+    qcom,bus-freq = <11>;
+    qcom,bus-min = <11>;
+    qcom,bus-max = <11>;
+};
 
-			qcom,gpu-pwrlevel@1 {
-				reg = <1>;
-				qcom,gpu-freq = <585000000>;
-				qcom,bus-freq = <10>;
-				qcom,bus-min = <9>;
-				qcom,bus-max = <11>;
-			};
+qcom,gpu-pwrlevel@1 {
+    reg = <1>;
+    qcom,gpu-freq = <585000000>;  // 585 MHz
+    qcom,bus-freq = <10>;
+    qcom,bus-min = <9>;
+    qcom,bus-max = <11>;
+};
 
-			qcom,gpu-pwrlevel@2 {
-				reg = <2>;
-				qcom,gpu-freq = <499200000>;
-				qcom,bus-freq = <9>;
-				qcom,bus-min = <8>;
-				qcom,bus-max = <11>;
-			};
-
+           qcom,gpu-pwrlevel@2 {
+               reg = <2>;
+               qcom,gpu-freq = <499200000>;  // 499 MHz
+               qcom,bus-freq = <9>;
+               qcom,bus-min = <8>;
+               qcom,bus-max = <11>;
+            };
 			qcom,gpu-pwrlevel@3 {
 				reg = <3>;
 				qcom,gpu-freq = <427000000>;
