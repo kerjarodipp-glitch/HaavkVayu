@@ -27,7 +27,9 @@ jobs:
         id: cherry
         run: |
           set -e
-          git cherry-pick e63d96f4e391d9b82341fa4926652baf22c273e9 || echo "conflict" > .conflict
+          git cherry-pick fb1b8c5e492fba0d86089af3c4806b57b4c29647 || echo "conflict" > .conflict
+          git cherry-pick f8769403e9f12d2bb1bae5c5ff46971ab58175a0 || echo "conflict" > .conflict
+          git cherry-pick f9eea3b6c57dc00cb413e2e243671a8a3ffe5c99 || echo "conflict" > .conflict
 
       - name: Handle conflicts if any
         if: ${{ hashFiles('.conflict') != '' }}
