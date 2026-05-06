@@ -1,0 +1,26 @@
+name: Remove KernelSU Submodule
+
+on:
+  workflow_dispatch:
+
+jobs:
+  remove-submodule:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # perlu fetch seluruh history
+          token: ${{ secrets.PAT_TOKEN }}  # PAT harus disimpan di Secrets
+
+      - name: Remove KernelSU submodule
+        run: |
+          git submodule deinit -f KernelSU
+          git rm -f KernelSU
+          rm -rf .git/modules/KernelSU
+          git commit -m "Remove KernelSU submodule"
+      
+      - name: Push changes
+        run: |
+          git push origin HEAD
