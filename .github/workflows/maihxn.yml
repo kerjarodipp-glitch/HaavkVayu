@@ -11,8 +11,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # perlu fetch seluruh history
-          token: ${{ secrets.PAT_TOKEN }}  # PAT harus disimpan di Secrets
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Setup Git identity
+        run: |
+          git config user.name "HaavkVayu Bot"
+          git config user.email "haavk@example.com"
 
       - name: Remove KernelSU submodule
         run: |
@@ -20,7 +25,6 @@ jobs:
           git rm -f KernelSU
           rm -rf .git/modules/KernelSU
           git commit -m "Remove KernelSU submodule"
-      
+
       - name: Push changes
-        run: |
-          git push origin HEAD
+        run: git push origin HEAD
