@@ -1,50 +1,31 @@
-name: Backport SuSFS v2.0.0
+name: Create HaavkSukisu Branch
 
 on:
   workflow_dispatch:
 
 jobs:
-  backport:
+  create-branch:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout target kernel
+      - name: Checkout source branch
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # perlu semua riwayat untuk cherry-pick
+          fetch-depth: 0
+          ref: HaavkOverclock  # ganti sesuai branch sumber
 
       - name: Setup Git identity
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add source remote (kylieeXD surya)
+      - name: Create new branch HaavkOverclock
         run: |
-          git remote add susfs-src https://github.com/kerjarodipp-glitch/HaavkVayu
-          git fetch susfs-src
+          git checkout -b HaavkReborn
 
-      - name: Try to cherry-pick SuSFS commit
-        id: cherry
-        run: |
-          set -e
-          git cherry-pick fb1b8c5e492fba0d86089af3c4806b57b4c29647 || echo "conflict" > .conflict
-          git cherry-pick f8769403e9f12d2bb1bae5c5ff46971ab58175a0 || echo "conflict" > .conflict
-          git cherry-pick f9eea3b6c57dc00cb413e2e243671a8a3ffe5c99 || echo "conflict" > .conflict
-
-      - name: Handle conflicts if any
-        if: ${{ hashFiles('.conflict') != '' }}
-        run: |
-          echo "::warning::Cherry-pick caused conflicts, keeping partial patch"
-          git status
-          git add .
-          git commit -m "Conflict Fix Needed"
-
-      - name: Push backport branch
+      - name: Push branch to origin using PAT
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}  # simpan PAT di secrets
         run: |
-          git push origin HaavkOverclock
-
-      - name: Show summary
-        run: |
-          echo "If there were conflicts, please resolve manually in your repo."
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
+          git push origin HaavkReborn
