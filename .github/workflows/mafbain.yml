@@ -1,0 +1,79 @@
+name: Check and Fix task_mmu SUSFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch kernel yang akan diperiksa"
+        required: true
+        default: "HaavkReborn"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check-task-mmu:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Check file exists
+        run: |
+          test -f fs/proc/task_mmu.c || {
+            echo "::error::fs/proc/task_mmu.c tidak ditemukan"
+            exit 1
+          }
+
+      - name: Check duplicate function definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE="fs/proc/task_mmu.c"
+
+          echo "=== Definisi show_smap ==="
+          grep -nE '^[[:space:]]*static int show_smap\(' "$FILE" || true
+
+          COUNT=$(grep -Ec '^[[:space:]]*static int show_smap\(' "$FILE" || true)
+
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::Ditemukan $COUNT definisi show_smap; perlu pemeriksaan manual."
+            exit 1
+          fi
+
+          echo "=== Fungsi terkait smaps ==="
+          grep -nE '^[[:space:]]*static int (show_smap|show_smaps_rollup|show_pid_smap|show_tid_smap)\(' "$FILE" || true
+
+      - name: Check patch formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== git diff --check ==="
+          git diff --check
+
+      - name: Print relevant source
+        if: always()
+        shell: bash
+        run: |
+          FILE="fs/proc/task_mmu.c"
+
+          if [ -f "$FILE" ]; then
+            echo "=== Baris 850-950 ==="
+            sed -n '850,950p' "$FILE"
+
+            echo "=== Baris 1030-1130 ==="
+            sed -n '1030,1130p' "$FILE"
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "Pemeriksaan dasar berhasil." >> "$GITHUB_STEP_SUMMARY"
+          echo "Ini belum menjamin source bebas dari semua error compile." >> "$GITHUB_STEP_SUMMARY"
