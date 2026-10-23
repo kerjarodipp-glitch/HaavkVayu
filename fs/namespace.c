@@ -134,7 +134,7 @@ static void mnt_free_id(struct mount *mnt)
 		return;
 
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	ida_free(&mnt_id_ida, mnt->mnt_id);
+	ida_simple_remove(&mnt_id_ida, mnt->mnt_id);
 }
 
 /*
@@ -159,7 +159,7 @@ static int mnt_alloc_group_id(struct mount *mnt)
 	res = ida_alloc_min(&mnt_group_ida, 1, GFP_KERNEL);
 bypass_orig_flow:
 #else
-	int res = ida_alloc_min(&mnt_group_ida, 1, GFP_KERNEL);
+	int res = ida_simple_get(&mnt_group_ida, 1, 0, GFP_KERNEL);
 #endif
 	if (res < 0)
 		return res;
