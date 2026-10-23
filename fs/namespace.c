@@ -129,21 +129,12 @@ retry:
 
 static void mnt_free_id(struct mount *mnt)
 {
-<<<<<<< ORIGINAL: HaavkReborn
-	int id = mnt->mnt_id;
-	spin_lock(&mnt_id_lock);
-	ida_remove(&mnt_id_ida, id);
-	if (mnt_id_start > id)
-		mnt_id_start = id;
-	spin_unlock(&mnt_id_lock);
-=======
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	if (mnt->mnt.mnt_flags & VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT)
 		return;
 
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	ida_free(&mnt_id_ida, mnt->mnt_id);
->>>>>>> BACKPORT: SuSFS v2.0.0
 }
 
 /*
@@ -153,20 +144,6 @@ static void mnt_free_id(struct mount *mnt)
  */
 static int mnt_alloc_group_id(struct mount *mnt)
 {
-<<<<<<< ORIGINAL: HaavkReborn
-	int res;
-
-	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
-		return -ENOMEM;
-
-	res = ida_get_new_above(&mnt_group_ida,
-				mnt_group_start,
-				&mnt->mnt_group_id);
-	if (!res)
-		mnt_group_start = mnt->mnt_group_id + 1;
-
-	return res;
-=======
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	int res;
 
@@ -188,7 +165,6 @@ bypass_orig_flow:
 		return res;
 	mnt->mnt_group_id = res;
 	return 0;
->>>>>>> BACKPORT: SuSFS v2.0.0
 }
 
 /*
