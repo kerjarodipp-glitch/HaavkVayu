@@ -12,9 +12,9 @@ on:
         required: true
         type: string
       defconfig:
-        description: "Path defconfig vayu relatif dari root source"
+        description: "Nama file defconfig vayu"
         required: true
-        default: "vendor/vayu_user_defconfig"
+        default: "vayu_user_defconfig"
         type: string
 
 permissions:
@@ -33,38 +33,57 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -n "$TOKEN" ]; then
+          if [ -n "${TOKEN:-}" ]; then
             AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w 0)
+
             git -c "http.extraheader=AUTHORIZATION: basic $AUTH" \
-              clone --depth=1 --single-branch \
-              --branch "$BRANCH" "$REPO" kernel
+              clone --single-branch --branch "$BRANCH" \
+              "$REPO" kernel
+
             unset AUTH TOKEN
           else
-            git clone --depth=1 --single-branch \
-              --branch "$BRANCH" "$REPO" kernel
+            git clone --single-branch --branch "$BRANCH" \
+              "$REPO" kernel
           fi
 
       - name: Download SUSFS Commit
         run: |
           set -euo pipefail
+
           curl -fL \
             "https://github.com/manipvlator/los_kernel_xiaomi_sm6150/commit/0ab7e57f96849fd61cf14e56e350bba1e87ebf64.patch" \
             -o susfs.patch
+
+          test -s susfs.patch
+
+      - name: Fetch Source Commit
+        run: |
+          set -euo pipefail
+
+          git -C kernel fetch \
+            https://github.com/manipvlator/los_kernel_xiaomi_sm6150.git \
+            0ab7e57f96849fd61cf14e56e350bba1e87ebf64
+
+          git -C kernel cat-file -t \
+            0ab7e57f96849fd61cf14e56e350bba1e87ebf64
 
       - name: Apply Backport
         id: patch
         continue-on-error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail
           cd kernel
 
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          # Jangan mengambil konfigurasi khusus sweet.
-          git apply --3way \
-            --exclude='arch/arm64/configs/vendor/sweet_defconfig' \
-            ../susfs.patch
+          git apply --3way --reject \
+            --exclude='arch/arm64/configs/*sweet*' \
+            ../susfs.patch 2>&1 | tee ../apply.log
+
+          result=${PIPESTATUS[0]}
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          exit "$result"
 
       - name: Configure Vayu Defconfig
         if: steps.patch.outcome == 'success'
@@ -78,44 +97,43 @@ jobs:
 
           if [ ! -f "$CONFIG" ]; then
             echo "Defconfig tidak ditemukan: $CONFIG"
-            echo "Periksa input defconfig."
+            find arch/arm64/configs -iname '*vayu*' -o -iname '*user*'
             exit 1
           fi
 
-          for option in \
-            CONFIG_KSU \
-            CONFIG_KSU_TAMPER_SYSCALL_TABLE \
-            CONFIG_KSU_SUSFS
-          do
-            if grep -q "^${option}=" "$CONFIG"; then
-              sed -i "s/^${option}=.*/${option}=y/" "$CONFIG"
-            elif ! grep -q "^# ${option} is not set$" "$CONFIG"; then
-              echo "${option}=y" >> "$CONFIG"
-            else
-              sed -i "s/^# ${option} is not set$/${option}=y/" "$CONFIG"
-            fi
-          done
+          echo "Defconfig ditemukan: $CONFIG"
+          echo "Tidak mengubah opsi KernelSU/SUSFS secara paksa."
+          echo "Periksa konfigurasi SUSFS yang dibutuhkan oleh source ini."
 
-      - name: Generate Backport Patch
+      - name: Generate Backport Results
         if: always()
         run: |
+          set +e
           mkdir -p output
 
           if [ -d kernel/.git ]; then
-            git -C kernel diff \
-              --binary > output/vayu-susfs-backport.patch
+            git -C kernel diff --binary \
+              > output/vayu-susfs-backport.patch
 
             git -C kernel status --short \
               > output/status.txt
+
+            find kernel -type f -name '*.rej' \
+              -exec cp --parents {} output/ \;
           fi
 
-          cp susfs.patch output/upstream.patch
+          if [ -f apply.log ]; then
+            cp apply.log output/apply.log
+          fi
+
+          if [ -f susfs.patch ]; then
+            cp susfs.patch output/upstream.patch
+          fi
 
           if [ "${{ steps.patch.outcome }}" = "success" ]; then
-            echo "Patch application: SUCCESS" \
-              > output/result.txt
+            echo "Patch application: SUCCESS" > output/result.txt
           else
-            echo "Patch application: FAILED" \
+            echo "Patch application: FAILED - inspect apply.log and .rej files" \
               > output/result.txt
           fi
 
