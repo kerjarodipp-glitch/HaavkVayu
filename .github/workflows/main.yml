@@ -63,7 +63,7 @@ jobs:
             | base64 --decode > "$MKDTBO_PATH"
           chmod +x "$MKDTBO_PATH"
 
-          curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU-Next/refs/heads/hookless/kernel/setup.sh" | bash -s hookless
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/refs/heads/main/kernel/setup.sh" | bash -s main
 
       - name: GetTime
         id: get_time
