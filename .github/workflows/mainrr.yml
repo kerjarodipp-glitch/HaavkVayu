@@ -77,13 +77,33 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          git apply --3way --reject \
+          # Percobaan pertama: 3-way merge
+          if git apply --3way \
             --exclude='arch/arm64/configs/*sweet*' \
-            ../susfs.patch 2>&1 | tee ../apply.log
+            ../susfs.patch 2>&1 | tee ../apply.log; then
+            echo "Patch berhasil diterapkan dengan 3-way."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          result=${PIPESTATUS[0]}
-          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
-          exit "$result"
+          echo "3-way gagal. Mencoba penerapan dengan reject..."
+
+          # Bersihkan perubahan parsial sebelum mencoba ulang.
+          git reset --hard HEAD
+          git clean -fd
+
+          # Percobaan kedua: simpan konflik ke file .rej
+          if git apply --reject \
+            --exclude='arch/arm64/configs/*sweet*' \
+            ../susfs.patch 2>&1 | tee ../apply-reject.log; then
+            echo "Patch diterapkan dengan reject; periksa file .rej."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            echo "Penerapan patch gagal."
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
 
       - name: Configure Vayu Defconfig
         if: steps.patch.outcome == 'success'
