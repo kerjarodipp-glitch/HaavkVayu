@@ -1,7 +1,11 @@
+
 name: Backport SuSFS v2.0.0
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   backport:
@@ -11,38 +15,96 @@ jobs:
       - name: Checkout target kernel
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # perlu semua riwayat untuk cherry-pick
+          ref: HaavkReborn
+          fetch-depth: 0
 
       - name: Setup Git identity
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git config merge.conflictStyle merge
 
-      - name: Add source remote (kylieeXD surya)
+      - name: Add source remote
         run: |
-          git remote add susfs-src https://github.com/manipvlator/los_kernel_xiaomi_sm6150
+          git remote add susfs-src \
+            https://github.com/manipvlator/los_kernel_xiaomi_sm6150.git
           git fetch susfs-src
 
-      - name: Try to cherry-pick SuSFS commit
+      - name: Cherry-pick SuSFS commit
         id: cherry
+        continue-on-error: true
         run: |
-          set -e
-          git cherry-pick 0ab7e57f96849fd61cf14e56e350bba1e87ebf64 || echo "conflict" > .conflict
+          git cherry-pick \
+            -x 0ab7e57f96849fd61cf14e56e350bba1e87ebf64
 
-      - name: Handle conflicts if any
-        if: ${{ hashFiles('.conflict') != '' }}
+      - name: Keep patch and mark conflicts
+        if: steps.cherry.outcome == 'failure'
+        shell: bash
         run: |
-          echo "::warning::Cherry-pick caused conflicts, keeping partial patch"
-          git status
-          git add .
-          git commit -m "Conflict Fix Needed"
+          set -euo pipefail
+
+          mapfile -t conflicts < <(
+            git diff --name-only --diff-filter=U
+          )
+
+          if [ "${#conflicts[@]}" -eq 0 ]; then
+            echo "::error::Cherry-pick failed without merge conflicts."
+            exit 1
+          fi
+
+          echo "Conflicted files:"
+          printf '%s\n' "${conflicts[@]}"
+
+          for file in "${conflicts[@]}"; do
+            [ -f "$file" ] || continue
+
+            # Binary files cannot contain normal text conflict markers.
+            if ! grep -Iq . "$file"; then
+              echo "::warning::Binary conflict: $file"
+              continue
+            fi
+
+            # Identify the target kernel's original code.
+            sed -i \
+              's/^<<<<<<< HEAD$/<<<<<<< ORIGINAL: HaavkReborn/' \
+              "$file"
+
+            # Identify the incoming SuSFS backport code.
+            sed -i \
+              '/^>>>>>>> /s/^>>>>>>> .*/>>>>>>> BACKPORT: SuSFS v2.0.0/' \
+              "$file"
+          done
+
+          # Mark the files resolved for Git while preserving
+          # the conflict markers as literal source text.
+          git add -A
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "::error::Unmerged files remain."
+            exit 1
+          fi
+
+          echo "Conflict markers retained in source files."
+          git status --short
+
+          # Create the backport commit even with markers remaining.
+          GIT_EDITOR=true git -c core.editor=true cherry-pick --continue
+
+      - name: Verify backport
+        run: |
+          echo "Latest commit:"
+          git log -1 --oneline
+
+          echo "Working tree:"
+          git status --short
+
+          echo "Remaining conflict markers:"
+          git grep -n -E \
+            '^(<<<<<<< ORIGINAL: HaavkReborn|=======|>>>>>>> BACKPORT: SuSFS v2\.0\.0)$' \
+            -- '*.c' '*.h' '*.cpp' '*.hpp' '*.dtsi' '*.dts' \
+               '*.mk' 'Kconfig*' 'Makefile' || true
 
       - name: Push backport branch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin HaavkReborn
-
-      - name: Show summary
-        run: |
-          echo "If there were conflicts, please resolve manually in your repo."
+          git push origin HEAD:refs/heads/HaavkReborn
