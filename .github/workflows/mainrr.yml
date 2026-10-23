@@ -1,31 +1,129 @@
-name: Create HaavkSukisu Branch
+name: Backport SUSFS v2.3.0 to Vayu
 
 on:
   workflow_dispatch:
+    inputs:
+      repo_url:
+        description: "URL source kernel vayu"
+        required: true
+        type: string
+      branch:
+        description: "Branch kernel vayu"
+        required: true
+        type: string
+      defconfig:
+        description: "Path defconfig vayu relatif dari root source"
+        required: true
+        default: "vendor/vayu_user_defconfig"
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  create-branch:
+  backport:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: HaavkOverclock  # ganti sesuai branch sumber
-
-      - name: Setup Git identity
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Create new branch HaavkOverclock
-        run: |
-          git checkout -b HaavkReborn
-
-      - name: Push branch to origin using PAT
+      - name: Clone Vayu Kernel
         env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}  # simpan PAT di secrets
+          TOKEN: ${{ secrets.CLONE_PAT }}
+          REPO: ${{ inputs.repo_url }}
+          BRANCH: ${{ inputs.branch }}
         run: |
-          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
-          git push origin HaavkReborn
+          set -euo pipefail
+
+          if [ -n "$TOKEN" ]; then
+            AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w 0)
+            git -c "http.extraheader=AUTHORIZATION: basic $AUTH" \
+              clone --depth=1 --single-branch \
+              --branch "$BRANCH" "$REPO" kernel
+            unset AUTH TOKEN
+          else
+            git clone --depth=1 --single-branch \
+              --branch "$BRANCH" "$REPO" kernel
+          fi
+
+      - name: Download SUSFS Commit
+        run: |
+          set -euo pipefail
+          curl -fL \
+            "https://github.com/manipvlator/los_kernel_xiaomi_sm6150/commit/0ab7e57f96849fd61cf14e56e350bba1e87ebf64.patch" \
+            -o susfs.patch
+
+      - name: Apply Backport
+        id: patch
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cd kernel
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          # Jangan mengambil konfigurasi khusus sweet.
+          git apply --3way \
+            --exclude='arch/arm64/configs/vendor/sweet_defconfig' \
+            ../susfs.patch
+
+      - name: Configure Vayu Defconfig
+        if: steps.patch.outcome == 'success'
+        env:
+          DEFCONFIG: ${{ inputs.defconfig }}
+        run: |
+          set -euo pipefail
+          cd kernel
+
+          CONFIG="arch/arm64/configs/$DEFCONFIG"
+
+          if [ ! -f "$CONFIG" ]; then
+            echo "Defconfig tidak ditemukan: $CONFIG"
+            echo "Periksa input defconfig."
+            exit 1
+          fi
+
+          for option in \
+            CONFIG_KSU \
+            CONFIG_KSU_TAMPER_SYSCALL_TABLE \
+            CONFIG_KSU_SUSFS
+          do
+            if grep -q "^${option}=" "$CONFIG"; then
+              sed -i "s/^${option}=.*/${option}=y/" "$CONFIG"
+            elif ! grep -q "^# ${option} is not set$" "$CONFIG"; then
+              echo "${option}=y" >> "$CONFIG"
+            else
+              sed -i "s/^# ${option} is not set$/${option}=y/" "$CONFIG"
+            fi
+          done
+
+      - name: Generate Backport Patch
+        if: always()
+        run: |
+          mkdir -p output
+
+          if [ -d kernel/.git ]; then
+            git -C kernel diff \
+              --binary > output/vayu-susfs-backport.patch
+
+            git -C kernel status --short \
+              > output/status.txt
+          fi
+
+          cp susfs.patch output/upstream.patch
+
+          if [ "${{ steps.patch.outcome }}" = "success" ]; then
+            echo "Patch application: SUCCESS" \
+              > output/result.txt
+          else
+            echo "Patch application: FAILED" \
+              > output/result.txt
+          fi
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vayu-susfs-backport
+          path: output/
+          if-no-files-found: warn
+          retention-days: 3
