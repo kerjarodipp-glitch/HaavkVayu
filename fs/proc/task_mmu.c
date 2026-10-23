@@ -20,21 +20,16 @@
 #include <linux/uaccess.h>
 #include <linux/mm_inline.h>
 #include <linux/ctype.h>
-<<<<<<< ORIGINAL: HaavkReborn
-=======
 #include <linux/pkeys.h>
 #if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
 #include <linux/susfs_def.h>
 #endif
->>>>>>> BACKPORT: SuSFS v2.0.0
 
 #include <asm/elf.h>
 #include <asm/tlb.h>
 #include <asm/tlbflush.h>
 #include "internal.h"
 
-<<<<<<< ORIGINAL: HaavkReborn
-=======
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 extern void susfs_show_map_vma_spoofer(struct inode *inode, dev_t *out_dev, unsigned long *out_ino);
 #endif
@@ -45,7 +40,6 @@ extern int susfs_open_redirect_spoof_show_map_vma_srcu(struct inode *inode, unsi
 
 #define SEQ_PUT_DEC(str, val) \
 		seq_put_decimal_ull_width(m, str, (val) << (PAGE_SHIFT-10), 8)
->>>>>>> BACKPORT: SuSFS v2.0.0
 void task_mem(struct seq_file *m, struct mm_struct *mm)
 {
 	unsigned long text, lib, swap, ptes, pmds, anon, file, shmem;
