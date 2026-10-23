@@ -1,154 +1,47 @@
-name: Fix SUSFS task_mmu Only
+name: Diagnose task_mmu SUSFS
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix-task-mmu:
+  diagnose:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout HaavkReborn
+      - name: Checkout kernel
         uses: actions/checkout@v4
         with:
           ref: HaavkReborn
           fetch-depth: 0
 
-      - name: Fix duplicate show_smap
+      - name: Inspect task_mmu
         shell: bash
         run: |
           set -euo pipefail
 
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-          import sys
+          FILE="fs/proc/task_mmu.c"
 
-          path = Path("fs/proc/task_mmu.c")
-          if not path.is_file():
-              sys.exit("ERROR: fs/proc/task_mmu.c tidak ditemukan")
+          echo "=== Function definitions ==="
+          grep -nE \
+            '^[[:space:]]*static int (show_smap|show_smaps_rollup|show_pid_smap|show_tid_smap)\(' \
+            "$FILE" || true
 
-          text = path.read_text()
+          echo "=== Conflict markers ==="
+          grep -nE \
+            '^(<<<<<<<|=======|>>>>>>>)' "$FILE" || true
 
-          original_sig = re.compile(
-              r"(?m)^static int show_smap"
-              r"\(struct seq_file \*m, void \*v, int is_pid\)\s*\{"
-          )
-          duplicate_sig = re.compile(
-              r"(?m)^static int show_smap"
-              r"\(struct seq_file \*m, void \*v\)\s*\{"
-          )
-          next_func = re.compile(
-              r"(?m)^static int show_smaps_rollup\s*\("
-          )
+          echo "=== Code around first error ==="
+          sed -n '880,1010p' "$FILE"
 
-          originals = list(original_sig.finditer(text))
-          duplicates = list(duplicate_sig.finditer(text))
+          echo "=== Code around second error ==="
+          sed -n '1010,1070p' "$FILE"
 
-          if len(originals) != 1:
-              sys.exit(
-                  f"ERROR: fungsi show_smap asli ditemukan "
-                  f"{len(originals)} kali; tidak mengubah file."
-              )
+          echo "=== Recent changes ==="
+          git log -5 --oneline -- fs/proc/task_mmu.c
 
-          if len(duplicates) != 1:
-              sys.exit(
-                  f"ERROR: fungsi show_smap duplikat ditemukan "
-                  f"{len(duplicates)} kali; tidak mengubah file."
-              )
-
-          duplicate = duplicates[0]
-          following = next_func.search(text, duplicate.end())
-
-          if not following:
-              sys.exit(
-                  "ERROR: batas show_smaps_rollup tidak ditemukan; "
-                  "tidak mengubah file."
-              )
-
-          if following.start() < duplicate.start():
-              sys.exit("ERROR: urutan fungsi tidak valid.")
-
-          # Hapus implementasi show_smap dua-parameter yang bentrok.
-          text = text[:duplicate.start()] + text[following.start():]
-
-          # Tambahkan pengecekan SUS_MAP pada implementasi asli.
-          originals = list(original_sig.finditer(text))
-          if len(originals) != 1:
-              sys.exit("ERROR: fungsi asli tidak unik setelah penghapusan.")
-
-          start = originals[0].start()
-          body_end = text.find("\nstatic ", start + 1)
-          if body_end < 0:
-              body_end = len(text)
-
-          body = text[start:body_end]
-          declaration = "struct vm_area_struct *vma = v;"
-
-          if body.count(declaration) != 1:
-              sys.exit(
-                  "ERROR: deklarasi vma tidak ditemukan secara unik; "
-                  "tidak mengubah file."
-              )
-
-          guard = """
-          #ifdef CONFIG_KSU_SUSFS_SUS_MAP
-              if (vma->vm_file &&
-                  SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
-                  return 0;
-          #endif
-          """
-
-          if "SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))" not in body:
-              body = body.replace(
-                  declaration,
-                  declaration + "\n" + guard.strip("\n"),
-                  1
-              )
-              text = text[:start] + body + text[body_end:]
-
-          # Pastikan tidak ada penanda konflik atau fungsi duplikat.
-          if re.search(r"(?m)^(<<<<<<<|=======|>>>>>>>)", text):
-              sys.exit("ERROR: conflict marker masih ditemukan.")
-
-          if len(list(original_sig.finditer(text))) != 1:
-              sys.exit("ERROR: jumlah fungsi asli tidak valid.")
-
-          if duplicate_sig.search(text):
-              sys.exit("ERROR: fungsi show_smap duplikat masih ada.")
-
-          path.write_text(text)
-          print("OK: task_mmu.c diperbaiki.")
-          print("OK: pemeriksaan SUS_MAP dipertahankan.")
-          print("OK: tidak ada proses compile kernel.")
-          PY
-
-      - name: Review patch
-        run: |
+          echo "=== Working tree diff ==="
           git diff --check
-          git diff --stat
           git diff -- fs/proc/task_mmu.c
-
-      - name: Commit fix
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git diff --quiet -- fs/proc/task_mmu.c; then
-            echo "Tidak ada perubahan yang perlu di-commit."
-            exit 0
-          fi
-
-          git add fs/proc/task_mmu.c
-          git commit -m "Fix SUSFS show_smap conflict for kernel 4.14"
-          git push origin HEAD:HaavkReborn
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "Workflow ini hanya memperbaiki source."
-          echo "Build kernel tidak dijalankan."
