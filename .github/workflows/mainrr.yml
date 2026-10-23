@@ -11,100 +11,198 @@ jobs:
   backport:
     runs-on: ubuntu-latest
 
+    env:
+      TARGET_BRANCH: HaavkReborn
+      SOURCE_REPO: https://github.com/manipvlator/los_kernel_xiaomi_sm6150.git
+      SUSFS_COMMIT: 0ab7e57f96849fd61cf14e56e350bba1e87ebf64
+
     steps:
       - name: Checkout target kernel
         uses: actions/checkout@v4
         with:
           ref: HaavkReborn
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Setup Git identity
+        shell: bash
         run: |
+          set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
+
           git config merge.conflictStyle merge
 
-      - name: Add source remote
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Target working tree is not clean."
+            exit 1
+          fi
+
+      - name: Fetch all source branches
+        shell: bash
         run: |
-          git remote add susfs-src \
-            https://github.com/manipvlator/los_kernel_xiaomi_sm6150.git
-          git fetch susfs-src
+          set -euo pipefail
+
+          git remote add susfs-src "$SOURCE_REPO"
+
+          git fetch susfs-src \
+            '+refs/heads/*:refs/remotes/susfs-src/*' \
+            --prune
+
+          # Try fetching the requested commit directly too.
+          git fetch susfs-src "$SUSFS_COMMIT" || true
+
+          echo "Source branches:"
+          git branch -r
+
+      - name: Validate source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! git cat-file -e "${SUSFS_COMMIT}^{commit}" 2>/dev/null; then
+            echo "::error::Commit $SUSFS_COMMIT was not found."
+            echo "Recent commits in the source repository:"
+
+            git log --all --remotes=susfs-src \
+              --oneline -30 || true
+
+            echo "Check the source repository and commit hash."
+            exit 1
+          fi
+
+          git show --no-patch --format=fuller "$SUSFS_COMMIT"
+
+      - name: Check for already applied commit
+        id: already
+        shell: bash
+        run: |
+          if git merge-base --is-ancestor \
+            "$SUSFS_COMMIT" HEAD 2>/dev/null; then
+            echo "applied=true" >> "$GITHUB_OUTPUT"
+            echo "Commit is already in target history."
+          else
+            echo "applied=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Cherry-pick SuSFS commit
         id: cherry
+        if: steps.already.outputs.applied != 'true'
         continue-on-error: true
+        shell: bash
         run: |
-          git cherry-pick \
-            -x 0ab7e57f96849fd61cf14e56e350bba1e87ebf64
+          git cherry-pick -x "$SUSFS_COMMIT"
 
-      - name: Keep patch and mark conflicts
+      - name: Preserve patch and mark conflicts
         if: steps.cherry.outcome == 'failure'
         shell: bash
         run: |
           set -euo pipefail
 
-          mapfile -t conflicts < <(
-            git diff --name-only --diff-filter=U
+          mkdir -p backport-debug
+
+          git status --short \
+            > backport-debug/status.txt
+
+          mapfile -d '' -t conflicts < <(
+            git diff --name-only --diff-filter=U -z
           )
 
           if [ "${#conflicts[@]}" -eq 0 ]; then
             echo "::error::Cherry-pick failed without merge conflicts."
+
+            git status
+            git cherry-pick --abort || true
             exit 1
           fi
 
-          echo "Conflicted files:"
-          printf '%s\n' "${conflicts[@]}"
-
           for file in "${conflicts[@]}"; do
-            [ -f "$file" ] || continue
+            echo "Handling: $file"
 
-            # Binary files cannot contain normal text conflict markers.
-            if ! grep -Iq . "$file"; then
-              echo "::warning::Binary conflict: $file"
+            if [ ! -f "$file" ]; then
+              echo "::warning::Deleted or non-regular conflict: $file"
               continue
             fi
 
-            # Identify the target kernel's original code.
-            sed -i \
-              's/^<<<<<<< HEAD$/<<<<<<< ORIGINAL: HaavkReborn/' \
-              "$file"
+            # Text conflicts can retain both versions.
+            if grep -Iq . "$file"; then
+              sed -i \
+                's/^<<<<<<< HEAD$/<<<<<<< ORIGINAL: HaavkReborn/' \
+                "$file"
 
-            # Identify the incoming SuSFS backport code.
-            sed -i \
-              '/^>>>>>>> /s/^>>>>>>> .*/>>>>>>> BACKPORT: SuSFS v2.0.0/' \
-              "$file"
+              sed -i \
+                's/^>>>>>>> .*/>>>>>>> BACKPORT: SuSFS v2.0.0/' \
+                "$file"
+
+              git add -- "$file"
+            else
+              # Binary files cannot contain line conflict markers.
+              # Prefer the incoming version and report the limitation.
+              echo "::warning::Binary conflict; using backport version: $file"
+
+              git checkout --theirs -- "$file" || true
+
+              if [ -e "$file" ]; then
+                git add -- "$file"
+              else
+                git add -u -- "$file"
+              fi
+            fi
           done
 
-          # Mark the files resolved for Git while preserving
-          # the conflict markers as literal source text.
+          # Stage all remaining resolutions, including additions/deletions.
           git add -A
 
-          if git diff --name-only --diff-filter=U | grep -q .; then
-            echo "::error::Unmerged files remain."
+          if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+            echo "::error::Unresolved conflicts remain."
+            git status
             exit 1
           fi
 
-          echo "Conflict markers retained in source files."
           git status --short
 
-          # Create the backport commit even with markers remaining.
+          # Continue the original cherry-pick commit.
           GIT_EDITOR=true git -c core.editor=true cherry-pick --continue
 
       - name: Verify backport
+        shell: bash
         run: |
+          set -euo pipefail
+
           echo "Latest commit:"
           git log -1 --oneline
 
           echo "Working tree:"
           git status --short
 
-          echo "Remaining conflict markers:"
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Working tree is not clean after backport."
+            exit 1
+          fi
+
+          echo "Conflict markers retained in source files:"
           git grep -n -E \
             '^(<<<<<<< ORIGINAL: HaavkReborn|=======|>>>>>>> BACKPORT: SuSFS v2\.0\.0)$' \
-            -- '*.c' '*.h' '*.cpp' '*.hpp' '*.dtsi' '*.dts' \
-               '*.mk' 'Kconfig*' 'Makefile' || true
+            HEAD -- '*.c' '*.h' '*.cpp' '*.hpp' \
+            '*.dtsi' '*.dts' '*.mk' 'Kconfig*' 'Makefile' \
+            || true
 
       - name: Push backport branch
+        if: success()
+        shell: bash
         run: |
-          git push origin HEAD:refs/heads/HaavkReborn
+          set -euo pipefail
+
+          git push origin \
+            "HEAD:refs/heads/${TARGET_BRANCH}"
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: susfs-v2-backport-logs
+          path: backport-debug/
+          if-no-files-found: ignore
+          retention-days: 7
