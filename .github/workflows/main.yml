@@ -32,6 +32,42 @@ jobs:
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2
 
+      - name: Fix IDA API for Linux 4.14
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("fs/super.c")
+          text = path.read_text()
+
+          old = """ida_alloc_range(&unnamed_dev_ida,
+                    DEFAULT_KSU_MNT_MINOR_DEV, (1 << MINORBITS) - 1,
+                    GFP_ATOMIC)"""
+
+          new = """ida_simple_get(&unnamed_dev_ida,
+                    DEFAULT_KSU_MNT_MINOR_DEV, (1 << MINORBITS),
+                    GFP_ATOMIC)"""
+
+          if old not in text:
+              if "ida_alloc_range(&unnamed_dev_ida" not in text:
+                  print("Pemanggilan ida_alloc_range tidak ditemukan; dilewati.")
+              else:
+                  raise SystemExit(
+                      "Pola berbeda dari yang diharapkan. "
+                      "Periksa fs/super.c sebelum mengubahnya."
+                  )
+          else:
+              text = text.replace(old, new, 1)
+              path.write_text(text)
+              print("Berhasil mengganti API IDA untuk kernel 4.14.")
+          PY
+
+          git diff --check
+          git diff -- fs/super.c
+
       - name: Install dependencies & toolchain
         run: |
           sudo apt-get update -y
