@@ -4,10 +4,6 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 
-<<<<<<< ORIGINAL: HaavkReborn
-static int cmdline_proc_show(struct seq_file *m, void *v)
-{
-=======
 #if defined (CONFIG_INITRAMFS_IGNORE_SKIP_FLAG) \
 	|| defined(CONFIG_CMDLINE_HWC_IS_SKU) \
 	|| defined(CONFIG_CMDLINE_HWC_IS_PRODUCT_SKU)
@@ -87,7 +83,6 @@ static int cmdline_proc_show(struct seq_file *m, void *v)
 		return 0;
 	}
 #endif
->>>>>>> BACKPORT: SuSFS v2.0.0
 	seq_printf(m, "%s\n", saved_command_line);
 	return 0;
 }
