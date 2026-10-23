@@ -977,23 +977,7 @@ static int unnamed_dev_start = 1;
 int get_anon_bdev(dev_t *p)
 {
 	int dev;
-	int error;
-
-<<<<<<< ORIGINAL: HaavkReborn
- retry:
-	if (ida_pre_get(&unnamed_dev_ida, GFP_ATOMIC) == 0)
-		return -ENOMEM;
-	spin_lock(&unnamed_dev_lock);
-	error = ida_get_new_above(&unnamed_dev_ida, unnamed_dev_start, &dev);
-	if (!error)
-		unnamed_dev_start = dev + 1;
-	spin_unlock(&unnamed_dev_lock);
-	if (error == -EAGAIN)
-		/* We raced and lost with another CPU. */
-		goto retry;
-	else if (error)
-		return -EAGAIN;
-=======
+	
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	if (!READ_ONCE(susfs_is_sdcard_android_data_decrypted) && susfs_is_current_ksu_domain()) {
 		dev = ida_alloc_range(&unnamed_dev_ida, DEFAULT_KSU_MNT_MINOR_DEV, (1 << MINORBITS) - 1,
@@ -1018,7 +1002,6 @@ int get_anon_bdev(dev_t *p)
 		dev = -EMFILE;
 	if (dev < 0)
 		return dev;
->>>>>>> BACKPORT: SuSFS v2.0.0
 
 	if (dev >= (1 << MINORBITS)) {
 		spin_lock(&unnamed_dev_lock);
