@@ -919,8 +919,6 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 		ret = SEQ_SKIP;
 	}
 
-<<<<<<< ORIGINAL: HaavkReborn
-=======
 static int show_smap(struct seq_file *m, void *v)
 {
 	struct vm_area_struct *vma = v;
@@ -938,7 +936,6 @@ static int show_smap(struct seq_file *m, void *v)
 	smap_gather_stats(vma, &mss);
 
 	show_map_vma(m, vma);
->>>>>>> BACKPORT: SuSFS v2.0.0
 	if (vma_get_anon_name(vma)) {
 		seq_puts(m, "Name:           ");
 		seq_print_vma_name(m, vma);
@@ -995,8 +992,6 @@ static int show_smap(struct seq_file *m, void *v)
 		show_smap_vma_flags(m, vma);
 	}
 	m_cache_vma(m, vma);
-<<<<<<< ORIGINAL: HaavkReborn
-=======
 
 	return 0;
 }
@@ -1052,7 +1047,6 @@ out_put_task:
 	put_task_struct(priv->task);
 	priv->task = NULL;
 
->>>>>>> BACKPORT: SuSFS v2.0.0
 	return ret;
 }
 
