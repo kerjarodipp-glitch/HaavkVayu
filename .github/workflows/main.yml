@@ -1,4 +1,4 @@
-name: Build Kernel (4.9 - crDroid)
+name: Build Kernel (4.14 - crDroid)
 
 on:
   workflow_dispatch:
@@ -11,9 +11,13 @@ on:
     branches:
       - HEAD
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -34,67 +38,147 @@ jobs:
 
       - name: Install dependencies & toolchain
         run: |
+          set -euo pipefail
+
           sudo apt-get update -y
 
-          # Toolchain & build deps
-          sudo apt install -y \
+          sudo apt-get install -y --no-install-recommends \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
             aria2 binutils make python3 libssl-dev build-essential \
             bc bison flex unzip ca-certificates xz-utils \
-            mkbootimg cpio device-tree-compiler git git-lfs curl wget
+            cpio device-tree-compiler git git-lfs curl wget \
+            libelf-dev dwarves
 
-          # python2 (dibutuhkan rule dtbo.img). Kalau paketnya tidak ada,
-          # buat symlink python2 -> python3
-          sudo apt-get install -y python2 || true
+          # Python 2 is optional; do not substitute Python 3 blindly.
           if ! command -v python2 >/dev/null 2>&1; then
-            echo "python2 package not available, creating symlink python2 -> python3"
-            sudo ln -sf /usr/bin/python3 /usr/bin/python2
+            sudo apt-get install -y python2 || true
           fi
 
-          # Toolchain (crDroid clang-r547379)
+          # Toolchain
           git clone --depth=1 \
             https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git \
             google-clang
-         
-          # Ganti mkdtboimg.py dengan versi Python3 dari AOSP (fix error str/bytes)
+
+          # Replace mkdtboimg.py with AOSP version
           MKDTBO_PATH="scripts/dtc/libfdt/mkdtboimg.py"
-          echo ">>> Replacing mkdtboimg.py with Python3 version from AOSP"
-          curl -L "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" \
+          mkdir -p "$(dirname "$MKDTBO_PATH")"
+
+          curl -fL \
+            "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" \
             | base64 --decode > "$MKDTBO_PATH"
+
           chmod +x "$MKDTBO_PATH"
 
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/refs/heads/main/kernel/setup.sh" | bash -s main
+          curl -fLSs \
+            "https://raw.githubusercontent.com/Baka-SU/BakaSU/refs/heads/main/kernel/setup.sh" \
+            | bash -s main
+
+      - name: Fix legacy IDA API for kernel 4.14
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          replacements = {
+              "fs/super.c": [
+                  (
+                      r"ida_alloc_range\(&unnamed_dev_ida,\s*"
+                      r"DEFAULT_KSU_MNT_MINOR_DEV,\s*"
+                      r"\(1\s*<<\s*MINORBITS\)\s*-\s*1,\s*GFP_ATOMIC\)",
+                      "ida_simple_get(&unnamed_dev_ida, "
+                      "DEFAULT_KSU_MNT_MINOR_DEV, "
+                      "(1 << MINORBITS), GFP_ATOMIC)"
+                  ),
+              ],
+              "fs/namespace.c": [
+                  (
+                      r"ida_alloc_min\(&mnt_group_ida,\s*"
+                      r"DEFAULT_KSU_MNT_GROUP_ID,\s*GFP_KERNEL\)",
+                      "ida_simple_get(&mnt_group_ida, "
+                      "DEFAULT_KSU_MNT_GROUP_ID, 0, GFP_KERNEL)"
+                  ),
+                  (
+                      r"ida_alloc_min\(&mnt_group_ida,\s*1,\s*GFP_KERNEL\)",
+                      "ida_simple_get(&mnt_group_ida, 1, 0, GFP_KERNEL)"
+                  ),
+                  (
+                      r"ida_alloc_min\(&mnt_id_ida,\s*"
+                      r"DEFAULT_KSU_MNT_ID,\s*GFP_KERNEL\)",
+                      "ida_simple_get(&mnt_id_ida, "
+                      "DEFAULT_KSU_MNT_ID, 0, GFP_KERNEL)"
+                  ),
+              ],
+          }
+
+          for filename, rules in replacements.items():
+              path = Path(filename)
+              if not path.is_file():
+                  print(f"SKIP: {filename} tidak ditemukan")
+                  continue
+
+              text = path.read_text()
+              original = text
+
+              for pattern, replacement in rules:
+                  text, count = re.subn(pattern, replacement, text)
+                  print(f"{filename}: pola diganti {count} kali")
+
+              if text != original:
+                  path.write_text(text)
+
+          # Fail early if the specific unsupported calls remain.
+          for filename in ("fs/super.c", "fs/namespace.c"):
+              path = Path(filename)
+              if not path.exists():
+                  continue
+
+              text = path.read_text()
+              if re.search(r"\bida_alloc_(?:range|min)\s*\(", text):
+                  sys.exit(
+                      f"ERROR: API IDA baru masih ditemukan di {filename}. "
+                      "Pola source berbeda; hentikan sebelum compile."
+                  )
+
+          print("Pemeriksaan API IDA selesai.")
+          PY
+
+          git diff --check
+          git diff -- fs/super.c fs/namespace.c
 
       - name: GetTime
         id: get_time
-        run: echo "TIME=$(TZ=UTC+3 date +%s)" >> "$GITHUB_OUTPUT"
+        run: echo "TIME=$(date -u +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
 
-      - name: Build Kernel-With-KernelSU (with logging)
+      - name: Build Kernel-With-KernelSU
+        shell: bash
         run: |
-          export PATH="$(pwd)/google-clang/bin/:$PATH"
+          set -euo pipefail
+
+          export PATH="$(pwd)/google-clang/bin:$PATH"
           export LD=ld.lld
 
           echo ">>> Starting defconfig build..."
-          make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang" 2>&1 | tee build_defconfig.log
+          set -o pipefail
+          make $KERNEL_CMDLINE "$KERNEL_DEFCONFIG" \
+            CC="ccache clang" 2>&1 | tee build_defconfig.log
 
           echo ">>> Starting kernel compilation (Image + dtbo.img)..."
-          make $KERNEL_CMDLINE CC="ccache clang" -j"$(nproc --all)" Image dtbo.img 2>&1 | tee build_kernel.log
-
-          BUILD_RESULT=${PIPESTATUS[0]}
-          if [ "$BUILD_RESULT" -ne 0 ]; then
-            echo "❌ Kernel build failed. Logs will be uploaded."
-            exit 1
-          fi
+          make $KERNEL_CMDLINE CC="ccache clang" \
+            -j"$(nproc)" Image dtbo.img 2>&1 | tee build_kernel.log
 
       - name: Upload Build Logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Build_Logs-${{ steps.get_time.outputs.TIME }}
+          if-no-files-found: warn
           path: |
             build_defconfig.log
             build_kernel.log
-            patch.log
             out/arch/arm64/boot/.config
 
       - name: Upload Raw Outputs
@@ -102,6 +186,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Raw_Kernel-${{ steps.get_time.outputs.TIME }}
+          if-no-files-found: warn
           path: |
             out/arch/arm64/boot/Image
             out/arch/arm64/boot/dtbo.img
