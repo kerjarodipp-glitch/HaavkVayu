@@ -1182,32 +1182,21 @@ static int override_release(char __user *release, size_t len)
 	return ret;
 }
 
-<<<<<<< ORIGINAL: HaavkReborn
-static uint64_t netbpfload_pid = 0;
-=======
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 extern void susfs_spoof_uname(struct new_utsname* tmp);
 #endif
->>>>>>> BACKPORT: SuSFS v2.0.0
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 {
 	struct new_utsname tmp;
 
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
-<<<<<<< ORIGINAL: HaavkReborn
-	if (!strncmp(current->comm, "netbpfload", 10) &&
-	    current->pid != netbpfload_pid) {
-		netbpfload_pid = current->pid;
-		strcpy(tmp.release, "6.6.40");
-=======
 	if (current_uid().val == 0 &&
 	   (!strncmp(current->comm, "bpfloader", 9) ||
 	    !strncmp(current->comm, "netbpfload", 10) ||
 	    !strncmp(current->comm, "uprobestatsbpfload", 18) ||
 	    !strncmp(current->comm, "netd", 4))) {
 		strcpy(tmp.release, "5.10.239");
->>>>>>> BACKPORT: SuSFS v2.0.0
 		pr_debug("fake uname: %s/%d release=%s\n",
 			 current->comm, current->pid, tmp.release);
 	}
